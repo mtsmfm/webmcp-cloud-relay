@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "WebMCP Cloud Relay",
+  "version": "0.1.0",
+  "description": "Expose WebMCP tools from tabs you grant to MCP clients like Claude Code, via your self-hosted relay.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "sw.js" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

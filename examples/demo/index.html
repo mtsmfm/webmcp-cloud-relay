@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebMCP Cloud Relay demo</title>
+    <style>
+      body {
+        font:
+          15px/1.6 system-ui,
+          sans-serif;
+        max-width: 640px;
+        margin: 40px auto;
+        padding: 0 16px;
+        color: #1c2430;
+      }
+      h1 {
+        font-size: 22px;
+      }
+      ul {
+        padding-left: 20px;
+      }
+      li {
+        margin: 4px 0;
+      }
+      input,
+      button {
+        font: inherit;
+        padding: 6px 10px;
+      }
+      .status {
+        color: #5a6675;
+        font-size: 13px;
+      }
+      code {
+        background: #eef2f7;
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WebMCP Cloud Relay demo</h1>
+    <p class="status" id="status">Checking for document.modelContext…</p>
+    <p>
+      This page registers three WebMCP tools: <code>list_notes</code>,
+      <code>add_note</code> and <code>clear_notes</code>. Grant this tab in the
+      WebMCP Cloud Relay popup, then ask your agent to manage the notes below.
+    </p>
+    <p>
+      <input id="text" placeholder="New note" />
+      <button id="add">Add</button>
+      <button id="clear">Clear</button>
+    </p>
+    <ul id="notes"></ul>
+    <script>
+      const notes = [];
+      const listEl = document.getElementById("notes");
+
+      function render() {
+        listEl.replaceChildren(
+          ...notes.map((n) => {
+            const li = document.createElement("li");
+            li.textContent = n;
+            return li;
+          }),
+        );
+      }
+
+      function addNote(text) {
+        notes.push(text);
+        render();
+      }
+
+      document.getElementById("add").onclick = () => {
+        const input = document.getElementById("text");
+        if (input.value.trim()) addNote(input.value.trim());
+        input.value = "";
+      };
+      document.getElementById("clear").onclick = () => {
+        notes.length = 0;
+        render();
+      };
+
+      async function registerTools() {
+        const mc = document.modelContext;
+        const statusEl = document.getElementById("status");
+        if (!mc) {
+          statusEl.textContent =
+            "document.modelContext is not available. Enable native WebMCP (Chrome origin trial or chrome://flags), or add a spec-shaped polyfill to this page.";
+          return;
+        }
+        await mc.registerTool({
+          name: "list_notes",
+          description: "Returns all notes currently shown on the page.",
+          inputSchema: { type: "object", properties: {} },
+          annotations: { readOnlyHint: true },
+          execute: () => ({ notes }),
+        });
+        await mc.registerTool({
+          name: "add_note",
+          description: "Adds a note to the list on the page.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              text: { type: "string", description: "The note text" },
+            },
+            required: ["text"],
+          },
+          execute: ({ text }) => {
+            addNote(String(text));
+            return { ok: true, count: notes.length };
+          },
+        });
+        await mc.registerTool({
+          name: "clear_notes",
+          description: "Removes all notes from the page.",
+          execute: () => {
+            notes.length = 0;
+            render();
+            return { ok: true };
+          },
+        });
+        statusEl.textContent = "Registered 3 WebMCP tools.";
+      }
+
+      registerTools();
+    </script>
+  </body>
+</html>

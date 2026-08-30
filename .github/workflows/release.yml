@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Check that the tag matches the manifest version
+        run: |
+          manifest=$(node -p 'require("./packages/extension/static/manifest.json").version')
+          test "v$manifest" = "$GITHUB_REF_NAME" || {
+            echo "Tag $GITHUB_REF_NAME does not match manifest version $manifest" >&2
+            exit 1
+          }
+      - name: Zip the extension (manifest at the zip root, as the Web Store expects)
+        run: |
+          cd packages/extension/dist
+          zip -r "$GITHUB_WORKSPACE/webmcp-cloud-relay-extension-$GITHUB_REF_NAME.zip" .
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "webmcp-cloud-relay-extension-$GITHUB_REF_NAME.zip"

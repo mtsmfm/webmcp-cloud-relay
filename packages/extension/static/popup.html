@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>WebMCP Cloud Relay</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>WebMCP Cloud Relay</h1>
+      <div id="conn" class="conn" data-status="idle">
+        <span class="dot"></span><span id="conn-text">Loading…</span>
+      </div>
+    </header>
+    <main>
+      <p id="error" class="error" hidden></p>
+      <section id="setup" class="card" hidden></section>
+      <section id="tab" class="card"></section>
+      <section id="agent" class="card" hidden></section>
+      <details id="settings">
+        <summary>Settings</summary>
+        <div id="settings-body"></div>
+      </details>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

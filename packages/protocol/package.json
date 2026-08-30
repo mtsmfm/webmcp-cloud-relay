@@ -1,0 +1,13 @@
+{
+  "name": "@webmcp-cloud-relay/protocol",
+  "version": "0.1.0",
+  "license": "MIT",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  // The demo page is served at / so a freshly deployed relay is testable
+  // right away; /t/* always goes to the Worker.
+  "assets": {
+    "directory": "../../examples/demo",
+    "run_worker_first": ["/t/*"],
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "BRIDGE", "class_name": "Bridge" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Bridge"] }],
+}

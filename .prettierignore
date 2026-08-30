@@ -1,0 +1,4 @@
+dist/
+.wrangler/
+pnpm-lock.yaml
+packages/extension/icons/
