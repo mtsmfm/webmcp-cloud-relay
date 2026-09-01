@@ -57,6 +57,20 @@ const DISCOVERY_MAX_TRIES = 20;
     }
   };
 
+  /**
+   * Native implementations serialize the execute() return value to a JSON
+   * string; undo that so MCP clients see the value, not a double-encoded
+   * string. A plain non-JSON string (a polyfill's) passes through as-is.
+   */
+  const parseResult = (out: unknown): unknown => {
+    if (typeof out !== "string") return toCloneable(out);
+    try {
+      return JSON.parse(out);
+    } catch {
+      return out;
+    }
+  };
+
   /** Normalize inputSchema to an object: native Chrome returns a string. */
   const parseSchema = (
     schema: object | string | undefined,
@@ -131,7 +145,7 @@ const DISCOVERY_MAX_TRIES = 20;
         type: "result",
         id: msg.id,
         ok: true,
-        content: toCloneable(out),
+        content: parseResult(out),
       });
     } catch (e) {
       const error = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
