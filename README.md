@@ -58,11 +58,10 @@ Claude Code:
 claude mcp add --transport http webmcp <mcpUrl>
 ```
 
-Codex (`~/.codex/config.toml`):
+Codex:
 
-```toml
-[mcp_servers.webmcp]
-url = "<mcpUrl>"
+```sh
+codex mcp add webmcp --url <mcpUrl>
 ```
 
 **4. Connect a tab.** Open a page that registers WebMCP tools, click the extension icon, and press **Connect this tab**. The badge turns green, and the tools appear in your agent (existing sessions pick them up via `tools/list_changed`).

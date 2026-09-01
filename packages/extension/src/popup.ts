@@ -276,9 +276,9 @@ function renderAgent(state: BridgeState): void {
   );
   root.append(
     snippet(
-      "Codex (config.toml)",
-      `[mcp_servers.webmcp]\nurl = "${mcpUrl}"`,
-      `[mcp_servers.webmcp]\nurl = "${shown}"`,
+      "Codex",
+      `codex mcp add webmcp --url ${mcpUrl}`,
+      `codex mcp add webmcp --url ${shown}`,
     ),
   );
 
