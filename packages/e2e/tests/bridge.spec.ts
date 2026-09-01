@@ -150,6 +150,64 @@ test("tools/call round-trips through the page", async () => {
   await expect(demo.locator("#notes li")).toHaveText(["hello from e2e"]);
 });
 
+test("a result stranded by a socket swap still completes the call", async () => {
+  // Regression test for the split-brain socket bug: a tool result produced
+  // while the extension is between relay sockets used to be dropped
+  // silently, leaving the call to hit the relay's 120s timeout even though
+  // the page had executed the tool.
+  const demo = context.pages().find((p) => p.url().startsWith(`${RELAY}/`))!;
+  await demo.evaluate(() => {
+    const mc = (
+      document as Document & {
+        modelContext?: {
+          registerTool(tool: object): Promise<void>;
+        };
+      }
+    ).modelContext;
+    return mc!.registerTool({
+      name: "slow_echo",
+      description: "Echoes after a delay",
+      inputSchema: { type: "object", properties: {} },
+      execute: async () => {
+        await new Promise((r) => setTimeout(r, 3000));
+        return { done: true };
+      },
+    });
+  });
+  await expect
+    .poll(
+      async () =>
+        ((await mcp(mcpUrl, "tools/list"))["tools"] as McpTool[]).some((t) =>
+          t.name.endsWith("_slow_echo"),
+        ),
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+  const name = ((await mcp(mcpUrl, "tools/list"))["tools"] as McpTool[]).find(
+    (t) => t.name.endsWith("_slow_echo"),
+  )!.name;
+
+  const call = mcp(mcpUrl, "tools/call", { name, arguments: {} });
+  // While the tool is still executing in the page, connect a second
+  // "extension" socket for the same token. The bridge closes the real one
+  // ("replaced"), so the result comes back while the extension has no open
+  // socket; it must be queued and delivered after the ~1s reconnect.
+  await new Promise((r) => setTimeout(r, 2000));
+  const token = /\/t\/([^/]+)\/mcp$/.exec(mcpUrl)![1];
+  const impostor = new WebSocket(
+    `${RELAY.replace(/^http/, "ws")}/t/${token}/ws`,
+  );
+  await new Promise((resolve, reject) => {
+    impostor.onopen = resolve;
+    impostor.onerror = reject;
+  });
+
+  const res = await call;
+  impostor.close();
+  expect(res["isError"]).toBeUndefined();
+  expect(JSON.parse(res["content"][0].text)).toEqual({ done: true });
+});
+
 test("unknown tools and disconnected calls fail as tool errors", async () => {
   const res = await fetch(mcpUrl, {
     method: "POST",
