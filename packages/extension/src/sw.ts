@@ -36,7 +36,6 @@ interface TabEntry {
 interface Settings {
   relayUrl: string | null;
   token: string | null;
-  autoOrigins: string[];
 }
 
 const tabs = new Map<number, TabEntry>();
@@ -52,7 +51,7 @@ const DEFAULT_RELAY_URL = "https://relay.webmcp-cloud-relay.workers.dev";
 /** What storage holds: relayUrl null means "use the default". */
 async function getRawSettings(): Promise<Settings> {
   const { settings } = await chrome.storage.local.get("settings");
-  return { relayUrl: null, token: null, autoOrigins: [], ...(settings ?? {}) };
+  return { relayUrl: null, token: null, ...(settings ?? {}) };
 }
 
 /** Settings with the default relay applied; storage stays sparse so a
@@ -284,10 +283,8 @@ async function sync(): Promise<void> {
 
 // ---- on-demand injection ----
 //
-// Nothing is injected anywhere by default. Opening the popup on a tab (an
-// activeTab grant) injects the reader + content script into that tab; sites
-// on the auto-connect list get a persistent per-origin registration instead,
-// backed by an optional host permission the user approved.
+// Nothing is injected anywhere by default: opening the popup on a tab (an
+// activeTab grant) injects the reader + content script into that tab.
 
 async function ensureInjected(tabId: number): Promise<void> {
   if (tabs.has(tabId)) return;
@@ -309,46 +306,6 @@ async function ensureInjected(tabId: number): Promise<void> {
   // Give the fresh content script a moment to connect and report.
   for (let i = 0; i < 14 && !tabs.has(tabId); i++) {
     await new Promise((r) => setTimeout(r, 50));
-  }
-}
-
-/** Per-origin persistent injection for auto-connect sites. */
-async function setAutoInjection(
-  origin: string,
-  enabled: boolean,
-): Promise<void> {
-  const readerId = `auto-reader-${origin}`;
-  const contentId = `auto-content-${origin}`;
-  if (enabled) {
-    try {
-      await chrome.scripting.registerContentScripts([
-        {
-          id: readerId,
-          matches: [`${origin}/*`],
-          js: ["reader.js"],
-          runAt: "document_start",
-          world: "MAIN",
-          persistAcrossSessions: true,
-        },
-        {
-          id: contentId,
-          matches: [`${origin}/*`],
-          js: ["content.js"],
-          runAt: "document_start",
-          persistAcrossSessions: true,
-        },
-      ]);
-    } catch {
-      // Already registered, or the optional host permission was not granted.
-    }
-  } else {
-    try {
-      await chrome.scripting.unregisterContentScripts({
-        ids: [readerId, contentId],
-      });
-    } catch {
-      // Was not registered.
-    }
   }
 }
 
@@ -379,16 +336,7 @@ chrome.runtime.onConnect.addListener((port) => {
           grants.delete(tabId);
           await setGrants(grants);
         }
-        const { autoOrigins } = await getSettings();
-        if (
-          !grants.has(tabId) &&
-          msg.tools.length > 0 &&
-          autoOrigins.includes(origin)
-        ) {
-          await grantTab(tabId);
-        } else {
-          await sync();
-        }
+        await sync();
       })();
     } else if (msg.type === "result") {
       sendToRelay(
@@ -428,7 +376,6 @@ async function buildState(tabId: number): Promise<BridgeState> {
         origin: entry.origin,
         tools: entry.tools,
         granted: grants.has(tabId),
-        autoConnect: settings.autoOrigins.includes(entry.origin),
       }
     : null;
   return {
@@ -453,15 +400,6 @@ chrome.runtime.onMessage.addListener(
         case "revoke":
           await revokeTab(msg.tabId);
           break;
-        case "set-auto-connect": {
-          const { autoOrigins } = await getSettings();
-          const next = msg.enabled
-            ? [...new Set([...autoOrigins, msg.origin])]
-            : autoOrigins.filter((o) => o !== msg.origin);
-          await patchSettings({ autoOrigins: next });
-          await setAutoInjection(msg.origin, msg.enabled);
-          break;
-        }
         case "set-relay-url": {
           const url = msg.url.trim().replace(/\/+$/, "");
           // Clear the snapshot the old bridge stores before abandoning it, so

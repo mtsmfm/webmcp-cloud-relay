@@ -72,8 +72,6 @@ export interface TabState {
   /** Tools the page has registered (raw names). Empty when none detected. */
   tools: RawTool[];
   granted: boolean;
-  /** Whether this tab's origin is on the auto-connect list. */
-  autoConnect: boolean;
 }
 
 export interface BridgeState {
@@ -91,7 +89,6 @@ export type PopupRequest =
   | { type: "get-state"; tabId: number }
   | { type: "grant"; tabId: number }
   | { type: "revoke"; tabId: number }
-  | { type: "set-auto-connect"; origin: string; enabled: boolean }
   | { type: "set-relay-url"; url: string }
   | { type: "regenerate-token" };
 

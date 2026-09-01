@@ -2,9 +2,9 @@
   "manifest_version": 3,
   "name": "WebMCP Cloud Relay",
   "version": "0.1.0",
-  "description": "Expose WebMCP tools from tabs you grant to MCP clients like Claude Code, via your self-hosted relay.",
+  "description": "Bridge WebMCP tools from tabs you explicitly connect to MCP clients like Claude Code, through a hosted or self-hosted relay.",
+  "homepage_url": "https://github.com/mtsmfm/webmcp-cloud-relay",
   "permissions": ["storage", "activeTab", "scripting"],
-  "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": { "service_worker": "sw.js" },
   "action": {
     "default_popup": "popup.html",

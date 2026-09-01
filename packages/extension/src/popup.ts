@@ -176,31 +176,6 @@ function toolList(tools: RawTool[]): HTMLElement {
   return list;
 }
 
-function autoConnectRow(origin: string, enabled: boolean): HTMLElement {
-  const label = el("label", "check");
-  const box = el("input");
-  box.type = "checkbox";
-  box.checked = enabled;
-  box.addEventListener("change", () => {
-    void (async () => {
-      if (box.checked) {
-        // Auto-connect needs a persistent per-site injection, which needs the
-        // per-site host permission; Chrome shows its own consent prompt.
-        const granted = await chrome.permissions
-          .request({ origins: [`${origin}/*`] })
-          .catch(() => false);
-        if (!granted) {
-          box.checked = false;
-          return;
-        }
-      }
-      await send({ type: "set-auto-connect", origin, enabled: box.checked });
-    })();
-  });
-  label.append(box, el("span", undefined, "Auto-connect on this site"));
-  return label;
-}
-
 function renderTab(state: BridgeState): void {
   const root = byId("tab");
   root.replaceChildren();
@@ -231,7 +206,6 @@ function renderTab(state: BridgeState): void {
 
   if (tab.tools.length === 0) {
     root.append(el("p", "note", "No WebMCP tools detected on this page."));
-    root.append(autoConnectRow(origin, tab.autoConnect));
     return;
   }
 
@@ -261,7 +235,6 @@ function renderTab(state: BridgeState): void {
           () => void send({ type: "grant", tabId: tab.tabId }),
         ),
   );
-  root.append(autoConnectRow(origin, tab.autoConnect));
 }
 
 function renderAgent(state: BridgeState): void {
