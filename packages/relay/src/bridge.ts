@@ -11,8 +11,8 @@ const CALL_TIMEOUT_MS = 120_000;
 const SSE_HEARTBEAT_MS = 25_000;
 // Open SSE streams pin the Durable Object in memory and accrue duration
 // billing, so they are the cost-abuse surface: cap how many can be open, how
-// long each lives (clients auto-reconnect), and how long they may outlive the
-// extension before there is evidently nothing left to stream about.
+// long each lives (clients auto-reconnect), and how long they may outlive
+// the extension.
 const SSE_MAX_STREAMS = 4;
 const SSE_MAX_LIFETIME_MS = 2 * 60 * 60_000;
 const SSE_EXT_ABSENT_CLOSE_MS = 5 * 60_000;

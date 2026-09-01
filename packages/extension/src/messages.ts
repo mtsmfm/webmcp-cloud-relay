@@ -10,10 +10,8 @@ export interface RawTool {
 
 // ---- window.postMessage between the MAIN-world reader and the content script ----
 //
-// Internal to the extension: both ends are extension code. The MAIN-world
-// reader exists because a page-shipped polyfill is invisible from the
-// isolated world; the reader consumes whatever WebMCP implementation the
-// page has and relays it here.
+// Internal to the extension: both ends are extension code. (Why the reader
+// lives in the MAIN world is explained in reader.ts.)
 
 export const WINDOW_SOURCE = "webmcp-cloud-relay";
 

@@ -1,17 +1,12 @@
 /**
  * MAIN-world reader, injected at document_start.
  *
- * This script is a pure subscriber: it never defines document.modelContext
- * or any other web API. If the page has WebMCP — a native implementation, or
- * a spec-shaped polyfill the page shipped itself — the reader subscribes to
+ * A pure subscriber: it never defines document.modelContext or any other web
+ * API. If the page has WebMCP — native, or a page-shipped polyfill (which
+ * only the MAIN world can see, hence this world) — the reader subscribes to
  * toolchange, lists tools with getTools(), and runs them with executeTool(),
- * relaying over window.postMessage to the extension's isolated-world content
- * script (which cannot see MAIN-world JavaScript). On pages without WebMCP
- * it stays silent and touches nothing.
- *
- * It runs in the MAIN world because a page-shipped polyfill is MAIN-world
- * JavaScript, invisible from the isolated world; a native implementation
- * would be visible from either.
+ * relaying over window.postMessage to the isolated-world content script. On
+ * pages without WebMCP it stays silent and touches nothing.
  */
 
 import type { ExtensionToPage, PageToExtension, RawTool } from "./messages";

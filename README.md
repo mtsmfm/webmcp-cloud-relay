@@ -1,6 +1,6 @@
 # WebMCP Cloud Relay
 
-Bridge [WebMCP](https://github.com/webmachinelearning/webmcp) tools from your browser tabs to Claude Code, Codex, or any other MCP client. A web page registers tools with `document.modelContext.registerTool()`; you click **Connect this tab** in the extension popup; those tools show up in your agent, running inside your logged-in browser session with your cookies, your session state, and nothing else exposed. The only server involved is a small Cloudflare Workers relay. The extension comes pointed at the hosted instance (`relay.webmcp-cloud-relay.workers.dev`) so it works out of the box, with no account; the relay is this repo's code, and [self-hosting it](#self-hosting-the-relay) is one command plus a settings field.
+Bridge [WebMCP](https://github.com/webmachinelearning/webmcp) tools from your browser tabs to Claude Code, Codex, or any other MCP client. A web page registers tools with `document.modelContext.registerTool()`; you click **Connect this tab** in the extension popup; those tools show up in your agent, running inside your logged-in browser session. The only server involved is a small Cloudflare Workers relay: the extension comes pointed at the hosted instance (`relay.webmcp-cloud-relay.workers.dev`) so it works out of the box with no account, and [self-hosting](#self-hosting-the-relay) the same code is one command plus a settings field.
 
 ## How it works
 
@@ -36,7 +36,7 @@ To consume it, the extension injects a MAIN-world _reader_: a subscriber that wa
 - **Stable pairing URL.** The MCP endpoint is derived from a token stored in the extension, so it survives browser and worker restarts — register it with your agent once.
 - **Tool namespacing by site.** `search` on `github.com` is exposed as `github_com_search`, so several connected tabs never collide.
 - **Live tool set.** Registrations, revocations, and disconnects push a new snapshot and fire `notifications/tools/list_changed`; MCP clients on the SSE stream re-list automatically.
-- **Cheap when idle.** The relay uses WebSocket hibernation and auto-response pings, and the extension only opens the socket while at least one tool is exposed. Note the flip side: while an MCP client holds the SSE stream open, the Durable Object stays active and accrues duration billing (~450 GB-s per hour) — see [Costs](#costs).
+- **Cheap when idle.** The relay uses WebSocket hibernation and auto-response pings, and the extension only opens the socket while at least one tool is exposed. The flip side — an open SSE stream keeps the Durable Object active and billing — is covered in [Costs](#costs).
 
 ## Quickstart
 
@@ -68,7 +68,7 @@ url = "<mcpUrl>"
 
 **4. Connect a tab.** Open a page that registers WebMCP tools, click the extension icon, and press **Connect this tab**. The badge turns green, and the tools appear in your agent (existing sessions pick them up via `tools/list_changed`).
 
-No such page at hand? The relay serves `examples/demo/index.html` at its root, so just open [relay.webmcp-cloud-relay.workers.dev](https://relay.webmcp-cloud-relay.workers.dev) (or your own relay's base URL) — the page registers three note-taking tools when `document.modelContext` exists in your browser (it tells you when it doesn't; see [Enabling WebMCP on your own site](#enabling-webmcp-on-your-own-site)). The [official demos](https://googlechromelabs.github.io/webmcp-tools/demos/pizza-maker/) also make good test targets.
+No such page at hand? Open your relay's base URL, e.g. [relay.webmcp-cloud-relay.workers.dev](https://relay.webmcp-cloud-relay.workers.dev) — it serves `examples/demo/index.html`, which registers three note-taking tools when `document.modelContext` exists in your browser (and tells you when it doesn't). The [official demos](https://googlechromelabs.github.io/webmcp-tools/demos/pizza-maker/) also make good test targets.
 
 ## Self-hosting the relay
 
@@ -108,7 +108,7 @@ Until browsers ship the API by default, make `document.modelContext` exist on yo
 Read this before pointing an agent at a page you do not trust.
 
 - **The pairing token is a bearer capability.** Anyone holding your MCP URL can list and call the tools of every tab you have connected. Treat it like a password: the popup masks it by default, and _Settings → Regenerate token_ revokes it — tool calls through the old URL fail immediately, its remaining tool listing is dropped within a day, and every agent must be re-registered.
-- **The relay sees tool traffic in plaintext.** Transport is TLS, but arguments and results are readable inside the Worker. Using the default hosted relay means trusting its operator with that visibility; if that is not acceptable for your data, [self-host the relay](#self-hosting-the-relay) — it is the same code, and the extension takes any base URL. Either way the relay stores no account data — the Durable Object is addressed by the SHA-256 of the token, and the token itself is never persisted.
+- **The relay sees tool traffic in plaintext.** Transport is TLS, but arguments and results are readable inside the Worker. Using the default hosted relay means trusting its operator with that visibility; [self-host the relay](#self-hosting-the-relay) to remove that trust. Either way the relay stores no account data — the Durable Object is addressed by the SHA-256 of the token, and the token itself is never persisted.
 - **Tool results are untrusted page content.** Anything a page returns is attacker-controllable if the page is. Every exposed tool is annotated with `untrustedContentHint`, and the MCP server's `instructions` tell the client to treat results as data, never as instructions. Prompt injection through a hostile page is a real risk — only connect tabs you trust.
 - **Explicit grants, narrow scope.** The extension has no host permissions by default — its scripts reach a page only when you open the popup on that tab, or on sites you put on the auto-connect list (each behind Chrome's own per-site permission prompt). Only the top frame of a granted tab is bridged; iframes are not. Grants live in `chrome.storage.session`, so they are gone after a browser restart. Closing a tab or navigating it to another origin drops its grant.
 - **One active tab per origin.** Granting a second tab on the same origin releases the first, which keeps tool names stable and calls unambiguous.
