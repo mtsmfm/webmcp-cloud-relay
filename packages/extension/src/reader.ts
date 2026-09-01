@@ -23,7 +23,8 @@ interface CallerModelContext {
     {
       name: string;
       description: string;
-      inputSchema?: object;
+      /** Chrome's native implementation returns this as a JSON string. */
+      inputSchema?: object | string;
       annotations?: RawTool["annotations"];
     }[]
   >;
@@ -58,17 +59,35 @@ const DISCOVERY_MAX_TRIES = 20;
     }
   };
 
+  /** Normalize inputSchema to an object: native Chrome returns a string. */
+  const parseSchema = (
+    schema: object | string | undefined,
+  ): Record<string, unknown> | undefined => {
+    if (typeof schema !== "string") {
+      return schema as Record<string, unknown> | undefined;
+    }
+    try {
+      const parsed: unknown = JSON.parse(schema);
+      return typeof parsed === "object" && parsed !== null
+        ? (parsed as Record<string, unknown>)
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
   const announce = async () => {
     if (!mc) return;
     const tools = await mc.getTools();
-    const descriptors: RawTool[] = tools.map((t) => ({
-      name: t.name,
-      description: t.description,
-      ...(t.inputSchema
-        ? { inputSchema: t.inputSchema as Record<string, unknown> }
-        : {}),
-      ...(t.annotations ? { annotations: t.annotations } : {}),
-    }));
+    const descriptors: RawTool[] = tools.map((t) => {
+      const inputSchema = parseSchema(t.inputSchema);
+      return {
+        name: t.name,
+        description: t.description,
+        ...(inputSchema ? { inputSchema } : {}),
+        ...(t.annotations ? { annotations: t.annotations } : {}),
+      };
+    });
     post({
       source: WINDOW_SOURCE,
       dir: "page",

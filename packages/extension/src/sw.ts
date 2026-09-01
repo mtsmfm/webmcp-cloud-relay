@@ -125,7 +125,8 @@ function composeTools(grants: Map<number, string>): void {
         name,
         description: t.description,
         ...(t.inputSchema ? { inputSchema: t.inputSchema } : {}),
-        annotations: { untrustedContentHint: true, ...t.annotations },
+        // Forced last so a page can never declare its own output trustworthy.
+        annotations: { ...t.annotations, untrustedContentHint: true },
       });
     }
   }
