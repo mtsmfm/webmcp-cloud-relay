@@ -28,10 +28,8 @@ interface CallerModelContext {
       annotations?: RawTool["annotations"];
     }[]
   >;
-  executeTool(
-    tool: { name: string },
-    args: Record<string, unknown>,
-  ): Promise<unknown>;
+  /** The spec's caller side takes the input arguments as a JSON string. */
+  executeTool(tool: { name: string }, args: string): Promise<unknown>;
   addEventListener(type: "toolchange", listener: () => void): void;
 }
 
@@ -126,7 +124,7 @@ const DISCOVERY_MAX_TRIES = 20;
       const tools = await mc.getTools();
       const tool = tools.find((t) => t.name === msg.name);
       if (!tool) throw new Error(`Unknown tool: ${msg.name}`);
-      const out = await mc.executeTool(tool, msg.args);
+      const out = await mc.executeTool(tool, JSON.stringify(msg.args ?? {}));
       post({
         source: WINDOW_SOURCE,
         dir: "page",
