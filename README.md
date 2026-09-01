@@ -104,7 +104,7 @@ Until browsers ship the API by default, make `document.modelContext` exist on yo
 
 ## Security model
 
-Read this before pointing an agent at a page you do not trust.
+Read this before pointing an agent at a page you do not trust. The privacy policy ([PRIVACY.md](PRIVACY.md)) covers the same ground in policy form.
 
 - **The pairing token is a bearer capability.** Anyone holding your MCP URL can list and call the tools of every tab you have connected. Treat it like a password: the popup masks it by default, and _Settings → Regenerate token_ revokes it — tool calls through the old URL fail immediately, its remaining tool listing is dropped within a day, and every agent must be re-registered.
 - **The relay sees tool traffic in plaintext.** Transport is TLS, but arguments and results are readable inside the Worker. Using the default hosted relay means trusting its operator with that visibility; [self-host the relay](#self-hosting-the-relay) to remove that trust. Either way the relay stores no account data — the Durable Object is addressed by the SHA-256 of the token, and the token itself is never persisted.
