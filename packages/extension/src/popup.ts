@@ -154,37 +154,14 @@ function snippet(label: string, full: string, shown: string): HTMLElement {
 // ---- sections ----
 
 function renderHeader(state: BridgeState): void {
-  const status =
-    state.relayUrl === null ? "setup" : state.wsConnected ? "on" : "idle";
-  const label =
-    status === "setup" ? "Not set up" : status === "on" ? "Connected" : "Idle";
+  const status = state.wsConnected ? "on" : "idle";
   const conn = byId("conn");
   conn.setAttribute("data-status", status);
   conn.title =
     status === "on"
-      ? "Connected to your relay"
-      : status === "idle"
-        ? "No tab is connected, so the relay socket is closed"
-        : "Set a relay URL to get started";
-  byId("conn-text").textContent = label;
-}
-
-function renderSetup(state: BridgeState): void {
-  const root = byId("setup");
-  root.replaceChildren();
-  root.hidden = state.relayUrl !== null;
-  if (!root.hidden) {
-    root.append(
-      el("h2", "card-title", "Set up your relay"),
-      el(
-        "p",
-        "note",
-        "WebMCP Cloud Relay reaches your agent through a relay you host yourself on " +
-          "Cloudflare Workers. Paste the base URL of your deployed relay.",
-      ),
-      relayForm(state, "Save"),
-    );
-  }
+      ? "Connected to the relay"
+      : "No tab is connected, so the relay socket is closed";
+  byId("conn-text").textContent = status === "on" ? "Connected" : "Idle";
 }
 
 function toolList(tools: RawTool[]): HTMLElement {
@@ -265,9 +242,7 @@ function renderTab(state: BridgeState): void {
         "note note-ok",
         state.wsConnected
           ? "Your agent can call these tools right now."
-          : state.relayUrl === null
-            ? "Set a relay URL to reach your agent."
-            : "Waiting for the relay connection…",
+          : "Waiting for the relay connection…",
       ),
     );
   }
@@ -292,8 +267,7 @@ function renderTab(state: BridgeState): void {
 function renderAgent(state: BridgeState): void {
   const root = byId("agent");
   root.replaceChildren();
-  root.hidden = state.mcpUrl === null;
-  if (state.mcpUrl === null) return;
+  root.hidden = false;
 
   const mcpUrl = state.mcpUrl;
   const shown = revealSecret ? mcpUrl : maskUrl(mcpUrl);
@@ -349,13 +323,17 @@ function renderAgent(state: BridgeState): void {
 function renderSettings(state: BridgeState): void {
   const body = byId("settings-body");
   body.replaceChildren();
-  // Before setup the relay URL already has a card of its own, and there is
-  // nothing else worth showing.
-  byId("settings").hidden = state.relayUrl === null;
-  if (state.relayUrl === null) return;
 
   body.append(el("span", "label", "Relay base URL"));
   body.append(relayForm(state, "Save"));
+  body.append(
+    el(
+      "p",
+      "note",
+      "Defaults to the hosted relay. To self-host, deploy your own " +
+        "(see the README) and paste its URL here.",
+    ),
+  );
 
   const danger = el("div", "danger");
   danger.append(
@@ -385,7 +363,6 @@ function renderSettings(state: BridgeState): void {
 function render(state: BridgeState): void {
   byId("error").hidden = true;
   renderHeader(state);
-  renderSetup(state);
   renderTab(state);
   renderAgent(state);
   renderSettings(state);

@@ -46,13 +46,24 @@ let exposedTools: ToolDescriptor[] = [];
 
 // ---- persistent state ----
 
-async function getSettings(): Promise<Settings> {
+/** The hosted relay; clearing the relay URL in settings returns to it. */
+const DEFAULT_RELAY_URL = "https://relay.webmcp-cloud-relay.workers.dev";
+
+/** What storage holds: relayUrl null means "use the default". */
+async function getRawSettings(): Promise<Settings> {
   const { settings } = await chrome.storage.local.get("settings");
   return { relayUrl: null, token: null, autoOrigins: [], ...(settings ?? {}) };
 }
 
+/** Settings with the default relay applied; storage stays sparse so a
+ * future default change reaches users who never set their own URL. */
+async function getSettings(): Promise<Settings & { relayUrl: string }> {
+  const raw = await getRawSettings();
+  return { ...raw, relayUrl: raw.relayUrl ?? DEFAULT_RELAY_URL };
+}
+
 async function patchSettings(patch: Partial<Settings>): Promise<Settings> {
-  const next = { ...(await getSettings()), ...patch };
+  const next = { ...(await getRawSettings()), ...patch };
   await chrome.storage.local.set({ settings: next });
   return next;
 }
@@ -134,7 +145,7 @@ function sendToRelay(msg: ExtensionToRelay): void {
 
 async function ensureWs(): Promise<void> {
   const settings = await getSettings();
-  wsWanted = exposedTools.length > 0 && !!settings.relayUrl && !!settings.token;
+  wsWanted = exposedTools.length > 0 && !!settings.token;
   if (!wsWanted) {
     teardownWs();
     return;
@@ -144,7 +155,7 @@ async function ensureWs(): Promise<void> {
     (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)
   )
     return;
-  const base = settings.relayUrl!.replace(/^http/, "ws");
+  const base = settings.relayUrl.replace(/^http/, "ws");
   try {
     ws = new WebSocket(`${base}/t/${settings.token}/ws`);
   } catch {
@@ -421,7 +432,7 @@ async function buildState(tabId: number): Promise<BridgeState> {
     : null;
   return {
     relayUrl: settings.relayUrl,
-    mcpUrl: settings.relayUrl ? `${settings.relayUrl}/t/${token}/mcp` : null,
+    mcpUrl: `${settings.relayUrl}/t/${token}/mcp`,
     wsConnected: ws?.readyState === WebSocket.OPEN,
     exposedTools,
     tab,

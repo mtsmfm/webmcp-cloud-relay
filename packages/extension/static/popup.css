@@ -93,10 +93,6 @@ header h1 {
   background: var(--ok);
 }
 
-.conn[data-status="setup"] .dot {
-  background: var(--accent);
-}
-
 /* ---- layout ---- */
 
 main {

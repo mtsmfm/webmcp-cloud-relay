@@ -79,9 +79,10 @@ export interface TabState {
 }
 
 export interface BridgeState {
-  relayUrl: string | null;
-  /** Full MCP endpoint URL to paste into an agent, or null until configured. */
-  mcpUrl: string | null;
+  /** Effective relay base URL (the hosted default unless overridden). */
+  relayUrl: string;
+  /** Full MCP endpoint URL to paste into an agent. */
+  mcpUrl: string;
   wsConnected: boolean;
   /** Tools currently exposed over MCP (namespaced), across all granted tabs. */
   exposedTools: ToolDescriptor[];

@@ -1,13 +1,13 @@
 # WebMCP Cloud Relay
 
-Bridge [WebMCP](https://github.com/webmachinelearning/webmcp) tools from your browser tabs to Claude Code, Codex, or any other MCP client. A web page registers tools with `document.modelContext.registerTool()`; you click **Connect this tab** in the extension popup; those tools show up in your agent, running inside your logged-in browser session with your cookies, your session state, and nothing else exposed. The only server involved is a small Cloudflare Workers relay that you deploy yourself — there is no hosted service, no account, and no third party in the path.
+Bridge [WebMCP](https://github.com/webmachinelearning/webmcp) tools from your browser tabs to Claude Code, Codex, or any other MCP client. A web page registers tools with `document.modelContext.registerTool()`; you click **Connect this tab** in the extension popup; those tools show up in your agent, running inside your logged-in browser session with your cookies, your session state, and nothing else exposed. The only server involved is a small Cloudflare Workers relay. The extension comes pointed at the hosted instance (`relay.webmcp-cloud-relay.workers.dev`) so it works out of the box, with no account; the relay is this repo's code, and [self-hosting it](#self-hosting-the-relay) is one command plus a settings field.
 
 ## How it works
 
 ```mermaid
 flowchart TB
     A["MCP client<br/>Claude Code · Codex · …"]
-    subgraph relay["Relay you host — Cloudflare Workers"]
+    subgraph relay["Relay — hosted default, or self-hosted (Cloudflare Workers)"]
         W["Worker router<br/>/t/:token/mcp · /t/:token/ws"]
         DO["Bridge Durable Object<br/>one per pairing token"]
         W --> DO
@@ -40,17 +40,7 @@ To consume it, the extension injects a MAIN-world _reader_: a subscriber that wa
 
 ## Quickstart
 
-**1. Deploy the relay** (needs a Cloudflare account and `wrangler login`):
-
-```sh
-cd packages/relay
-pnpm install
-pnpm run deploy
-```
-
-Wrangler prints the deployed URL, e.g. `https://relay.<your-subdomain>.workers.dev`. That is your relay base URL.
-
-**2. Build and load the extension:**
+**1. Build and load the extension** (or grab the zip from the latest [release](../../releases)):
 
 ```sh
 cd packages/extension
@@ -59,9 +49,9 @@ pnpm build
 
 Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select `packages/extension/dist`.
 
-**3. Point the extension at your relay.** Open the popup, paste the relay base URL, and press _Save_. The popup then shows your MCP URL — `https://…/t/<token>/mcp` — masked, with a copy button and a _Reveal_ toggle.
+**2. Copy your MCP URL.** Open the popup: it already points at the hosted relay and shows your MCP URL — `https://…/t/<token>/mcp` — masked, with a copy button and a _Reveal_ toggle. (Prefer your own relay? See [Self-hosting the relay](#self-hosting-the-relay).)
 
-**4. Register the server with your agent.**
+**3. Register the server with your agent.**
 
 Claude Code:
 
@@ -76,9 +66,21 @@ Codex (`~/.codex/config.toml`):
 url = "<mcpUrl>"
 ```
 
-**5. Connect a tab.** Open a page that registers WebMCP tools, click the extension icon, and press **Connect this tab**. The badge turns green, and the tools appear in your agent (existing sessions pick them up via `tools/list_changed`).
+**4. Connect a tab.** Open a page that registers WebMCP tools, click the extension icon, and press **Connect this tab**. The badge turns green, and the tools appear in your agent (existing sessions pick them up via `tools/list_changed`).
 
-No such page at hand? The relay serves `examples/demo/index.html` at its root, so just open your relay base URL — the page registers three note-taking tools when `document.modelContext` exists in your browser (it tells you when it doesn't; see [Enabling WebMCP on your own site](#enabling-webmcp-on-your-own-site)). The [official demos](https://googlechromelabs.github.io/webmcp-tools/demos/pizza-maker/) also make good test targets.
+No such page at hand? The relay serves `examples/demo/index.html` at its root, so just open [relay.webmcp-cloud-relay.workers.dev](https://relay.webmcp-cloud-relay.workers.dev) (or your own relay's base URL) — the page registers three note-taking tools when `document.modelContext` exists in your browser (it tells you when it doesn't; see [Enabling WebMCP on your own site](#enabling-webmcp-on-your-own-site)). The [official demos](https://googlechromelabs.github.io/webmcp-tools/demos/pizza-maker/) also make good test targets.
+
+## Self-hosting the relay
+
+The hosted relay is the default for convenience, but the relay is designed to be yours: tool arguments and results pass through it in plaintext (see [Security model](#security-model)), and self-hosting removes that trust entirely. You need a Cloudflare account (the free plan is plenty — see [Costs](#costs)) and `wrangler login`:
+
+```sh
+cd packages/relay
+pnpm install
+pnpm run deploy
+```
+
+Wrangler prints the deployed URL, e.g. `https://relay.<your-subdomain>.workers.dev`. Paste it into the popup's _Settings → Relay base URL_; your MCP URL changes accordingly, so re-register it with your agent.
 
 ## Enabling WebMCP on your own site
 
@@ -106,7 +108,7 @@ Until browsers ship the API by default, make `document.modelContext` exist on yo
 Read this before pointing an agent at a page you do not trust.
 
 - **The pairing token is a bearer capability.** Anyone holding your MCP URL can list and call the tools of every tab you have connected. Treat it like a password: the popup masks it by default, and _Settings → Regenerate token_ revokes it — the old URL stops working immediately and every agent must be re-registered.
-- **The relay sees tool traffic in plaintext.** Transport is TLS, but arguments and results are readable inside the Worker. That is exactly why the relay is yours to deploy: do not use someone else's. The relay stores no account data — the Durable Object is addressed by the SHA-256 of the token, and the token itself is never persisted.
+- **The relay sees tool traffic in plaintext.** Transport is TLS, but arguments and results are readable inside the Worker. Using the default hosted relay means trusting its operator with that visibility; if that is not acceptable for your data, [self-host the relay](#self-hosting-the-relay) — it is the same code, and the extension takes any base URL. Either way the relay stores no account data — the Durable Object is addressed by the SHA-256 of the token, and the token itself is never persisted.
 - **Tool results are untrusted page content.** Anything a page returns is attacker-controllable if the page is. Every exposed tool is annotated with `untrustedContentHint`, and the MCP server's `instructions` tell the client to treat results as data, never as instructions. Prompt injection through a hostile page is a real risk — only connect tabs you trust.
 - **Explicit grants, narrow scope.** The extension has no host permissions by default — its scripts reach a page only when you open the popup on that tab, or on sites you put on the auto-connect list (each behind Chrome's own per-site permission prompt). Only the top frame of a granted tab is bridged; iframes are not. Grants live in `chrome.storage.session`, so they are gone after a browser restart. Closing a tab or navigating it to another origin drops its grant.
 - **One active tab per origin.** Granting a second tab on the same origin releases the first, which keeps tool names stable and calls unambiguous.
