@@ -139,8 +139,21 @@ let backoffMs = BACKOFF_MIN_MS;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pingTimer: ReturnType<typeof setInterval> | null = null;
 
+/**
+ * Tool results the socket could not carry (closed, or replaced mid-call).
+ * Flushed on the next open: the relay keeps a call pending for 120s, so a
+ * result delivered after a quick reconnect still completes the call.
+ */
+const queuedResults: ExtensionToRelay[] = [];
+const QUEUED_RESULTS_MAX = 32;
+
 function sendToRelay(msg: ExtensionToRelay): void {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(msg));
+  } else if (msg.type === "result") {
+    queuedResults.push(msg);
+    if (queuedResults.length > QUEUED_RESULTS_MAX) queuedResults.shift();
+  }
 }
 
 async function ensureWs(): Promise<void> {
@@ -156,21 +169,33 @@ async function ensureWs(): Promise<void> {
   )
     return;
   const base = settings.relayUrl.replace(/^http/, "ws");
+  let socket: WebSocket;
   try {
-    ws = new WebSocket(`${base}/t/${settings.token}/ws`);
+    socket = new WebSocket(`${base}/t/${settings.token}/ws`);
   } catch {
     scheduleReconnect();
     return;
   }
-  ws.onopen = () => {
+  // Handlers act on their own socket and stand down once it is no longer the
+  // current one, so a superseded connection can never close or speak for its
+  // replacement.
+  ws?.close();
+  ws = socket;
+  socket.onopen = () => {
+    if (socket !== ws) {
+      socket.close();
+      return;
+    }
     backoffMs = BACKOFF_MIN_MS;
     sendToRelay({ type: "tools", tools: exposedTools });
+    for (const msg of queuedResults.splice(0)) sendToRelay(msg);
     pingTimer ??= setInterval(
       () => ws?.readyState === WebSocket.OPEN && ws.send("ping"),
       PING_INTERVAL_MS,
     );
   };
-  ws.onmessage = (event) => {
+  socket.onmessage = (event) => {
+    if (socket !== ws) return;
     if (typeof event.data !== "string" || event.data === "pong") return;
     let msg: RelayToExtension;
     try {
@@ -180,11 +205,12 @@ async function ensureWs(): Promise<void> {
     }
     if (msg.type === "call") routeCall(msg);
   };
-  ws.onclose = () => {
+  socket.onclose = () => {
+    if (socket !== ws) return;
     ws = null;
     if (wsWanted) scheduleReconnect();
   };
-  ws.onerror = () => ws?.close();
+  socket.onerror = () => socket.close();
 }
 
 function teardownWs(): void {
@@ -192,6 +218,8 @@ function teardownWs(): void {
   reconnectTimer = null;
   if (pingTimer) clearInterval(pingTimer);
   pingTimer = null;
+  // Queued results belong to the bridge being torn down, not the next one.
+  queuedResults.length = 0;
   ws?.close();
   ws = null;
 }
