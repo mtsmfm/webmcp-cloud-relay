@@ -4,3 +4,6 @@ dist/
 *.log
 .dev.vars
 packages/extension/icons/
+packages/e2e/dist-extension/
+packages/e2e/test-results/
+packages/e2e/playwright-report/

@@ -1,0 +1,16 @@
+{
+  "name": "@webmcp-cloud-relay/e2e",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/chrome": "^0.2.7",
+    "@types/node": "^24.10.9",
+    "typescript": "^7.0.2"
+  }
+}

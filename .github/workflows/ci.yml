@@ -20,3 +20,5 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm --filter @webmcp-cloud-relay/e2e exec playwright install --with-deps chromium
+      - run: pnpm e2e
