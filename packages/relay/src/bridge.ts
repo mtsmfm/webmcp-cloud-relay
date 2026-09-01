@@ -16,6 +16,10 @@ const SSE_HEARTBEAT_MS = 25_000;
 const SSE_MAX_STREAMS = 4;
 const SSE_MAX_LIFETIME_MS = 2 * 60 * 60_000;
 const SSE_EXT_ABSENT_CLOSE_MS = 5 * 60_000;
+// The tool snapshot survives extension reconnects, but an abandoned bridge
+// (token regenerated with the socket already closed, extension uninstalled)
+// must not serve stale tool metadata forever: drop it after a day offline.
+const SNAPSHOT_TTL_MS = 24 * 60 * 60_000;
 
 const encoder = new TextEncoder();
 
@@ -70,6 +74,7 @@ export class Bridge implements DurableObject {
     for (const ws of this.ctx.getWebSockets("ext")) ws.close(1000, "replaced");
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1], ["ext"]);
+    void this.ctx.storage.deleteAlarm();
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
@@ -102,7 +107,17 @@ export class Bridge implements DurableObject {
 
   async webSocketClose(): Promise<void> {
     // Keep the tool snapshot: the extension reconnects with backoff and
-    // re-sends it; meanwhile tools/call fails fast below.
+    // re-sends it; meanwhile tools/call fails fast below. Only when nothing
+    // reconnects for a day is the bridge considered abandoned.
+    if (this.ctx.getWebSockets("ext").length === 0) {
+      await this.ctx.storage.setAlarm(Date.now() + SNAPSHOT_TTL_MS);
+    }
+  }
+
+  async alarm(): Promise<void> {
+    if (this.ctx.getWebSockets("ext").length > 0) return;
+    await this.ctx.storage.delete("tools");
+    this.notifyToolListChanged();
   }
 
   // ---- MCP side (streamable HTTP, stateless: no session ids) ----
