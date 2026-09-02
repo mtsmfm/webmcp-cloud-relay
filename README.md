@@ -2,6 +2,10 @@
 
 Bridge [WebMCP](https://github.com/webmachinelearning/webmcp) tools from your browser tabs to Claude Code, Codex, or any other MCP client. A web page registers tools with `document.modelContext.registerTool()`; you click **Connect this tab** in the extension popup; those tools show up in your agent, running inside your logged-in browser session. The only server involved is a small Cloudflare Workers relay: the extension comes pointed at the hosted instance (`relay.webmcp-cloud-relay.workers.dev`) so it works out of the box with no account, and [self-hosting](#self-hosting-the-relay) the same code is one command plus a settings field.
 
+## Demo
+
+[![Demo: driving a WebMCP page from Claude Code](https://img.youtube.com/vi/mwXFtDlIRg4/maxresdefault.jpg)](https://www.youtube.com/watch?v=mwXFtDlIRg4)
+
 ## How it works
 
 ```mermaid
