@@ -42,6 +42,34 @@
         color: #5a6675;
         font-size: 13px;
       }
+      .fork-ribbon {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: 200px;
+        overflow: hidden;
+        height: 200px;
+        pointer-events: none;
+      }
+      .fork-ribbon a {
+        position: absolute;
+        top: 42px;
+        right: -52px;
+        transform: rotate(45deg);
+        width: 220px;
+        padding: 8px 0;
+        text-align: center;
+        background: #1a66c2;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        text-decoration: none;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+        border: 1px dashed rgba(255, 255, 255, 0.6);
+        outline: 4px solid #1a66c2;
+        pointer-events: auto;
+      }
       code {
         background: #eef2f7;
         padding: 1px 5px;
@@ -63,6 +91,14 @@
       <button id="clear">Clear</button>
     </p>
     <ul id="notes"></ul>
+    <div class="fork-ribbon">
+      <a
+        href="https://github.com/mtsmfm/webmcp-cloud-relay"
+        target="_blank"
+        rel="noopener"
+        >Fork me on GitHub</a
+      >
+    </div>
     <script>
       const notes = [];
       const listEl = document.getElementById("notes");
