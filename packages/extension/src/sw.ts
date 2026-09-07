@@ -39,6 +39,25 @@ interface Settings {
 }
 
 const tabs = new Map<number, TabEntry>();
+/** Calls belong to a document's port, never to its replacement after reload. */
+const pendingCalls = new Map<
+  string,
+  { port: chrome.runtime.Port; expiry: ReturnType<typeof setTimeout> }
+>();
+
+function forgetCall(id: string): void {
+  const pending = pendingCalls.get(id);
+  if (pending) clearTimeout(pending.expiry);
+  pendingCalls.delete(id);
+}
+
+function failCalls(port: chrome.runtime.Port, error: string): void {
+  for (const [id, owner] of pendingCalls) {
+    if (owner.port !== port) continue;
+    forgetCall(id);
+    sendToRelay({ type: "result", id, ok: false, error });
+  }
+}
 /** exposed MCP name -> where to route the call */
 let exposedRoutes = new Map<string, { tabId: number; raw: string }>();
 let exposedTools: ToolDescriptor[] = [];
@@ -252,8 +271,14 @@ function routeCall(msg: RelayToExtension): void {
     args: msg.args,
   };
   try {
+    // Release bookkeeping even if the page hangs beyond the relay timeout.
+    pendingCalls.set(msg.id, {
+      port: entry.port,
+      expiry: setTimeout(() => forgetCall(msg.id), 130_000),
+    });
     entry.port.postMessage(call);
   } catch {
+    forgetCall(msg.id);
     sendToRelay({
       type: "result",
       id: msg.id,
@@ -347,12 +372,19 @@ chrome.runtime.onConnect.addListener((port) => {
 
   port.onMessage.addListener((msg: ContentToSw) => {
     if (msg.type === "hello") {
+      const previous = tabs.get(tabId);
+      if (previous && previous.port !== port) {
+        failCalls(
+          previous.port,
+          "The granted page was replaced; the tool result is unavailable. Check the page before retrying.",
+        );
+      }
       entry = { origin: msg.origin, tools: [], port };
       tabs.set(tabId, entry);
       void sync();
       return;
     }
-    if (!entry) return;
+    if (!entry || tabs.get(tabId) !== entry) return;
     const origin = entry.origin;
     if (msg.type === "tools") {
       entry.tools = msg.tools;
@@ -367,6 +399,8 @@ chrome.runtime.onConnect.addListener((port) => {
         await sync();
       })();
     } else if (msg.type === "result") {
+      if (pendingCalls.get(msg.id)?.port !== port) return;
+      forgetCall(msg.id);
       sendToRelay(
         msg.ok
           ? { type: "result", id: msg.id, ok: true, content: msg.content }
@@ -381,9 +415,42 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 
   port.onDisconnect.addListener(() => {
+    failCalls(
+      port,
+      "The granted page disconnected; the tool result is unavailable. Check the page before retrying.",
+    );
     if (tabs.get(tabId) === entry) tabs.delete(tabId);
     void sync();
   });
+});
+
+// activeTab access survives same-origin reloads, but injected scripts do not.
+// Retire the old document immediately and re-inject only for the granted site.
+chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
+  if (change.status === "loading") {
+    const previous = tabs.get(tabId);
+    if (previous) {
+      failCalls(
+        previous.port,
+        "The granted page navigated; the tool result is unavailable. Check the page before retrying.",
+      );
+      tabs.delete(tabId);
+      void sync();
+    }
+  }
+  if (change.status !== "complete" && !change.url) return;
+  void (async () => {
+    const grants = await getGrants();
+    const granted = grants.get(tabId);
+    if (!granted) return;
+    const url = change.url ?? tab.url;
+    // Chrome hides the URL once activeTab access is lost on navigation.
+    if (!url || new URL(url).origin !== granted) {
+      await revokeTab(tabId);
+      return;
+    }
+    if (change.status === "complete") await ensureInjected(tabId);
+  })();
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {

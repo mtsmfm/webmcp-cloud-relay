@@ -222,3 +222,101 @@ test("unknown tools and disconnected calls fail as tool errors", async () => {
   const body = (await res.json()) as { error?: { code: number } };
   expect(body.error?.code).toBe(-32602);
 });
+
+test("a granted tab restores fresh tools after a same-origin reload", async () => {
+  const demo = context.pages().find((p) => p.url().startsWith(`${RELAY}/`))!;
+  await demo.reload();
+  await expect(demo.locator("#status")).toHaveText(
+    "Registered 3 WebMCP tools.",
+  );
+  await expect
+    .poll(
+      async () => {
+        const tools = (await mcp(mcpUrl, "tools/list"))["tools"] as McpTool[];
+        return tools.map((t) => t.name).sort();
+      },
+      { timeout: 10_000 },
+    )
+    .toEqual([
+      "127_0_0_1_add_note",
+      "127_0_0_1_clear_notes",
+      "127_0_0_1_list_notes",
+    ]);
+  const result = await mcp(mcpUrl, "tools/call", {
+    name: "127_0_0_1_list_notes",
+    arguments: {},
+  });
+  expect(result["isError"]).toBeUndefined();
+  expect(JSON.parse(result["content"][0].text)).toEqual({ notes: [] });
+});
+
+test("reloading during a call reports interruption without replaying it", async () => {
+  const demo = context.pages().find((p) => p.url().startsWith(`${RELAY}/`))!;
+  await demo.evaluate(async () => {
+    const mc = (
+      document as Document & {
+        modelContext: { registerTool(tool: object): Promise<void> };
+      }
+    ).modelContext;
+    await mc.registerTool({
+      name: "interrupted_call",
+      description: "Waits until the document is destroyed",
+      inputSchema: { type: "object", properties: {} },
+      execute: () => {
+        document.body.dataset["callStarted"] = "true";
+        return new Promise(() => {});
+      },
+    });
+  });
+  await expect
+    .poll(async () => {
+      const tools = (await mcp(mcpUrl, "tools/list"))["tools"] as McpTool[];
+      return tools.some((t) => t.name.endsWith("_interrupted_call"));
+    })
+    .toBe(true);
+  let result: Record<string, any> | undefined;
+  const call = mcp(mcpUrl, "tools/call", {
+    name: "127_0_0_1_interrupted_call",
+    arguments: {},
+  }).then((value) => {
+    result = value;
+  });
+  await expect(demo.locator("body")).toHaveAttribute(
+    "data-call-started",
+    "true",
+  );
+  await demo.reload();
+  await expect.poll(() => result, { timeout: 5_000 }).toBeDefined();
+  await call;
+  expect(result!["isError"]).toBe(true);
+  expect(result!["content"][0].text).toMatch(/navigated|disconnected|replaced/);
+  await expect
+    .poll(async () => {
+      const tools = (await mcp(mcpUrl, "tools/list"))["tools"] as McpTool[];
+      return tools.map((t) => t.name).sort();
+    })
+    .toEqual([
+      "127_0_0_1_add_note",
+      "127_0_0_1_clear_notes",
+      "127_0_0_1_list_notes",
+    ]);
+});
+
+test("navigation to a different origin revokes the grant", async () => {
+  const demo = context.pages().find((p) => p.url().startsWith(`${RELAY}/`))!;
+  await demo.goto("about:blank");
+  await expect
+    .poll(async () => (await mcp(mcpUrl, "tools/list"))["tools"])
+    .toEqual([]);
+  await demo.goto(`${RELAY}/`);
+  const state = await popup.evaluate(async (relay) => {
+    const tabs = await chrome.tabs.query({});
+    const tab = tabs.find((t) => t.url?.startsWith(relay))!;
+    return await chrome.runtime.sendMessage({
+      type: "get-state",
+      tabId: tab.id,
+    });
+  }, RELAY);
+  expect(state.tab?.granted).not.toBe(true);
+  expect((await mcp(mcpUrl, "tools/list"))["tools"]).toEqual([]);
+});
