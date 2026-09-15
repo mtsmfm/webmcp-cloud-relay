@@ -93,3 +93,10 @@ export type PopupRequest =
   | { type: "regenerate-token" };
 
 export type PopupResponse = BridgeState;
+
+/**
+ * Broadcast by the service worker whenever the bridge state may have changed
+ * (a tab reported tools, a grant flipped, the relay socket opened or closed).
+ * The popup, if open, re-fetches its state; there is no other listener.
+ */
+export type SwToPopup = { type: "state-changed" };

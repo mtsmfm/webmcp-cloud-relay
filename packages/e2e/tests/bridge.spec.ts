@@ -73,6 +73,52 @@ test("popup points the extension at the local relay", async () => {
   expect(mcpUrl).toMatch(new RegExp(`^${RELAY}/t/[A-Za-z0-9_-]{43,}/mcp$`));
 });
 
+// A page whose WebMCP caller side answers getTools() slowly. Native
+// getTools() is too fast to expose timing bugs, so this stands in for a
+// polyfill or a page under load. Served from a second port so the demo tab's
+// origin is not disturbed; the test-build host permission covers any port.
+const SLOW_ORIGIN = "http://127.0.0.1:18790";
+const SLOW_PAGE = `<!doctype html><title>slow</title><script>
+  Object.defineProperty(document, "modelContext", {
+    value: {
+      async getTools() {
+        await new Promise((r) => setTimeout(r, 400));
+        return [{ name: "slow_tool", description: "answers late" }];
+      },
+      async executeTool() { return "ok"; },
+      addEventListener() {},
+    },
+  });
+</script>`;
+
+test("the first popup open already lists a slow page's tools", async () => {
+  await context.route(`${SLOW_ORIGIN}/**`, (route) =>
+    route.fulfill({ contentType: "text/html", body: SLOW_PAGE }),
+  );
+  const slow = await context.newPage();
+  try {
+    await slow.goto(`${SLOW_ORIGIN}/`);
+
+    // The very first get-state on a fresh tab is what the popup renders, and
+    // it renders it once; it must wait for the reader's first tool list rather
+    // than answer as soon as the content script connects.
+    const first = await popup.evaluate(async (origin) => {
+      const tabs = await chrome.tabs.query({});
+      const tab = tabs.find((t) => t.url?.startsWith(origin));
+      if (!tab?.id) throw new Error("slow tab not found");
+      return (await chrome.runtime.sendMessage({
+        type: "get-state",
+        tabId: tab.id,
+      })) as { tab: { tools: { name: string }[] } | null };
+    }, SLOW_ORIGIN);
+    expect(first.tab?.tools.map((t) => t.name)).toEqual(["slow_tool"]);
+  } finally {
+    // Even on failure, leave no extra tab or route behind for later tests.
+    await slow.close();
+    await context.unroute(`${SLOW_ORIGIN}/**`);
+  }
+});
+
 test("granting the demo tab exposes its tools over MCP", async () => {
   const demo = await context.newPage();
   await demo.goto(`${RELAY}/`);

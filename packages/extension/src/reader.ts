@@ -165,7 +165,13 @@ const DISCOVERY_MAX_TRIES = 20;
     )
       return;
     if (msg.type === "announce") {
-      if (discover()) void announce();
+      // discover() announces on its own when it first finds WebMCP; a page
+      // without it (yet) gets an explicit empty list so the extension can
+      // stop waiting and show "no tools" instead of guessing.
+      if (mc) void announce();
+      else if (!discover()) {
+        post({ source: WINDOW_SOURCE, dir: "page", type: "tools", tools: [] });
+      }
     } else if (msg.type === "call") {
       void handleCall(msg);
     }
