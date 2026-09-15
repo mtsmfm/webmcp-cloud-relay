@@ -6,10 +6,14 @@
  * local state is presentational (whether the secret URL is revealed).
  */
 
-import type { BridgeState, PopupRequest, RawTool } from "./messages";
+import type { BridgeState, PopupRequest, RawTool, SwToPopup } from "./messages";
 
 /** Presentational state, kept across re-renders. */
 let revealSecret = false;
+/** The tab this popup was opened on; set once main() has resolved it. */
+let currentTabId: number | null = null;
+/** Coalesces bursts of state-changed notifications into one refresh. */
+let refreshQueued = false;
 
 // ---- tiny DOM helpers ----
 
@@ -341,13 +345,33 @@ function render(state: BridgeState): void {
   renderSettings(state);
 }
 
+/**
+ * Re-fetch and re-render when the service worker says the state changed:
+ * the page's tools arrive a moment after injection, a polyfill can register
+ * late, toolchange can fire, and the relay socket opens asynchronously.
+ */
+function refresh(): void {
+  if (currentTabId === null || refreshQueued) return;
+  refreshQueued = true;
+  queueMicrotask(() => {
+    refreshQueued = false;
+    void send({ type: "get-state", tabId: currentTabId ?? -1 });
+  });
+}
+
+chrome.runtime.onMessage.addListener((msg: SwToPopup) => {
+  if (msg?.type === "state-changed") refresh();
+});
+
 async function main(): Promise<void> {
   try {
     const [tab] = await chrome.tabs.query({
       active: true,
       currentWindow: true,
     });
-    render(await request({ type: "get-state", tabId: tab?.id ?? -1 }));
+    const tabId = tab?.id ?? -1;
+    render(await request({ type: "get-state", tabId }));
+    currentTabId = tabId;
   } catch (e) {
     showError(e);
   }

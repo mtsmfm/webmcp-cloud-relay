@@ -20,6 +20,7 @@ import type {
   PopupRequest,
   RawTool,
   SwToContent,
+  SwToPopup,
   TabState,
 } from "./messages";
 
@@ -30,6 +31,8 @@ const BACKOFF_MAX_MS = 30_000;
 interface TabEntry {
   origin: string;
   tools: RawTool[];
+  /** Whether the reader has sent its first tool list (possibly empty). */
+  reported: boolean;
   port: chrome.runtime.Port;
 }
 
@@ -206,6 +209,7 @@ async function ensureWs(): Promise<void> {
       return;
     }
     backoffMs = BACKOFF_MIN_MS;
+    notifyPopup();
     sendToRelay({ type: "tools", tools: exposedTools });
     for (const msg of queuedResults.splice(0)) sendToRelay(msg);
     pingTimer ??= setInterval(
@@ -227,6 +231,7 @@ async function ensureWs(): Promise<void> {
   socket.onclose = () => {
     if (socket !== ws) return;
     ws = null;
+    notifyPopup();
     if (wsWanted) scheduleReconnect();
   };
   socket.onerror = () => socket.close();
@@ -332,6 +337,13 @@ async function sync(): Promise<void> {
   await updateBadges(grants);
   sendToRelay({ type: "tools", tools: exposedTools });
   await ensureWs();
+  notifyPopup();
+}
+
+/** Tell an open popup to re-render. Rejects when no popup is open; ignore. */
+function notifyPopup(): void {
+  const msg: SwToPopup = { type: "state-changed" };
+  chrome.runtime.sendMessage(msg).catch(() => {});
 }
 
 // ---- on-demand injection ----
@@ -339,8 +351,15 @@ async function sync(): Promise<void> {
 // Nothing is injected anywhere by default: opening the popup on a tab (an
 // activeTab grant) injects the reader + content script into that tab.
 
+/** How long to wait for a freshly injected reader's first tool list. */
+const FIRST_REPORT_TIMEOUT_MS = 1_500;
+const FIRST_REPORT_POLL_MS = 25;
+
 async function ensureInjected(tabId: number): Promise<void> {
-  if (tabs.has(tabId)) return;
+  if (tabs.has(tabId)) {
+    await awaitFirstReport(tabId);
+    return;
+  }
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -356,9 +375,20 @@ async function ensureInjected(tabId: number): Promise<void> {
   } catch {
     return; // a page we cannot touch (chrome://, the web store, no permission)
   }
-  // Give the fresh content script a moment to connect and report.
-  for (let i = 0; i < 14 && !tabs.has(tabId); i++) {
-    await new Promise((r) => setTimeout(r, 50));
+  await awaitFirstReport(tabId);
+}
+
+/**
+ * Wait for the content script to connect *and* for the reader's first tool
+ * list. The popup renders a one-shot snapshot of what this returns, and the
+ * "hello" arrives a round-trip before the tools do; answering in between
+ * shows "No WebMCP tools" (and no Connect button) on a page that has them.
+ * Bounded so an unreachable page still gets an answer.
+ */
+async function awaitFirstReport(tabId: number): Promise<void> {
+  const deadline = Date.now() + FIRST_REPORT_TIMEOUT_MS;
+  while (!tabs.get(tabId)?.reported && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, FIRST_REPORT_POLL_MS));
   }
 }
 
@@ -379,7 +409,7 @@ chrome.runtime.onConnect.addListener((port) => {
           "The granted page was replaced; the tool result is unavailable. Check the page before retrying.",
         );
       }
-      entry = { origin: msg.origin, tools: [], port };
+      entry = { origin: msg.origin, tools: [], reported: false, port };
       tabs.set(tabId, entry);
       void sync();
       return;
@@ -388,6 +418,7 @@ chrome.runtime.onConnect.addListener((port) => {
     const origin = entry.origin;
     if (msg.type === "tools") {
       entry.tools = msg.tools;
+      entry.reported = true;
       void (async () => {
         const grants = await getGrants();
         const granted = grants.get(tabId);
