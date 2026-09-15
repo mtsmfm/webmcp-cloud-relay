@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { handleMessage, toContentBlocks, type McpContext } from "../src/mcp";
+import {
+  asToolResult,
+  handleMessage,
+  toContentBlocks,
+  type McpContext,
+} from "../src/mcp";
 
 function ctx(overrides: Partial<McpContext> = {}): McpContext {
   return {
@@ -116,5 +121,58 @@ describe("toContentBlocks", () => {
     expect(toContentBlocks(undefined)).toEqual([
       { type: "text", text: "null" },
     ]);
+  });
+
+  it("passes an MCP tool result through so images reach the client", () => {
+    const content = [
+      { type: "text", text: "page 2" },
+      { type: "image", data: "UklGRg==", mimeType: "image/webp" },
+    ];
+    expect(toContentBlocks({ content })).toEqual(content);
+    expect(asToolResult({ content, isError: true })).toEqual({
+      content,
+      isError: true,
+    });
+    expect(asToolResult({ content, isError: "yes" })).toEqual({ content });
+  });
+
+  it("stringifies a content array that is not made of MCP blocks", () => {
+    const notBlocks = { content: [{ type: "image", data: "x" }] };
+    expect(toContentBlocks(notBlocks)).toEqual([
+      { type: "text", text: JSON.stringify(notBlocks) },
+    ]);
+    expect(toContentBlocks({ content: [] })).toEqual([
+      { type: "text", text: '{"content":[]}' },
+    ]);
+    expect(toContentBlocks({ content: "text" })).toEqual([
+      { type: "text", text: '{"content":"text"}' },
+    ]);
+  });
+});
+
+describe("tools/call with an MCP tool result", () => {
+  it("returns the page's blocks and isError unchanged", async () => {
+    const content = [
+      { type: "image", data: "UklGRg==", mimeType: "image/webp" },
+    ];
+    const res = await handleMessage(
+      {
+        jsonrpc: "2.0",
+        id: 9,
+        method: "tools/call",
+        params: { name: "example_com_greet", arguments: {} },
+      },
+      ctx({
+        callTool: async () => ({
+          ok: true,
+          content: { content, isError: true },
+        }),
+      }),
+    );
+    expect(res).toEqual({
+      jsonrpc: "2.0",
+      id: 9,
+      result: { content, isError: true },
+    });
   });
 });

@@ -40,10 +40,53 @@ function result(id: JsonRpcMessage["id"], payload: unknown) {
   return { jsonrpc: "2.0" as const, id: id ?? null, result: payload };
 }
 
-/** Render a WebMCP execute() return value as MCP content blocks. */
-export function toContentBlocks(
+/** One MCP content block (text, image, audio or embedded resource). */
+export type ContentBlock = { type: string; [key: string]: unknown };
+
+function isContentBlock(value: unknown): value is ContentBlock {
+  if (typeof value !== "object" || value === null) return false;
+  const block = value as ContentBlock;
+  switch (block.type) {
+    case "text":
+      return typeof block.text === "string";
+    case "image":
+    case "audio":
+      return (
+        typeof block.data === "string" && typeof block.mimeType === "string"
+      );
+    case "resource":
+      return typeof block.resource === "object" && block.resource !== null;
+    default:
+      return false;
+  }
+}
+
+/**
+ * A WebMCP execute() return value that already is an MCP tool result:
+ * `{ content: ContentBlock[], isError?: boolean }`. Pages return this shape
+ * to send images (and other non-text blocks) to the client.
+ */
+export function asToolResult(
   value: unknown,
-): { type: "text"; text: string }[] {
+): { content: ContentBlock[]; isError?: boolean } | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { content, isError } = value as {
+    content?: unknown;
+    isError?: unknown;
+  };
+  if (!Array.isArray(content) || content.length === 0) return null;
+  if (!content.every(isContentBlock)) return null;
+  return isError === true ? { content, isError: true } : { content };
+}
+
+/**
+ * Render a WebMCP execute() return value as MCP content blocks. A value that
+ * already is a tool result passes through unchanged (so images survive);
+ * anything else becomes one text block, JSON-encoded unless it is a string.
+ */
+export function toContentBlocks(value: unknown): ContentBlock[] {
+  const passthrough = asToolResult(value);
+  if (passthrough) return passthrough.content;
   const text =
     typeof value === "string" ? value : (JSON.stringify(value) ?? "null");
   return [{ type: "text", text }];
@@ -101,7 +144,13 @@ export async function handleMessage(
       }
       const outcome = await ctx.callTool(name, args);
       if (outcome.ok) {
-        return result(id, { content: toContentBlocks(outcome.content) });
+        // A page that returns an MCP tool result keeps its blocks and isError.
+        return result(
+          id,
+          asToolResult(outcome.content) ?? {
+            content: toContentBlocks(outcome.content),
+          },
+        );
       }
       // Execution failures are tool results, not protocol errors (MCP spec).
       return result(id, {
